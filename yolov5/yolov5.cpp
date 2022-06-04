@@ -474,19 +474,31 @@ int main(int argc, char** argv) {
     //cv::VideoCapture capture("/home/nano/Videos/video.mp4");
      //#调用本地usb摄像头,我的默认参数为1,如果1报错,可修改为0.
     cv::VideoCapture capture1(atoi(argv[3]));
-    //cv::VideoCapture capture2(atoi(argv[4]));
+    //capture1.set(cv::CAP_PROP_FRAME_WIDTH, 320);
+    //capture1.set(cv::CAP_PROP_FRAME_HEIGHT, 240);
+    //capture1.set(cv::CAP_PROP_FOURCC, cv::VideoWriter_fourcc('M', 'J', 'P', 'G'));
+
+    cv::VideoCapture capture2(atoi(argv[4]));
+    //capture2.set(cv::CAP_PROP_FRAME_WIDTH, 640);
+    //capture2.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
+    //capture2.set(cv::CAP_PROP_FOURCC, cv::VideoWriter_fourcc('M', 'J', 'P', 'G'));
     if (!capture1.isOpened()) {
         std::cout << "Error opening video stream or file" << std::endl;
         return -1;
     }
 
+    /*
+    if (!capture2.isOpened()) {
+        std::cout << "Error opening video stream or file" << std::endl;
+        return -1;
+    }
+    */
 
     char buffer[1024];
     int ret = 0;
     ret = recv(sockfd, buffer, 1024, 0);
     cout << "buffer " << buffer << endl; 
     int key;
-    int fcount = 0;
     string modified_mode;
     stringstream ss;
     ss << buffer;
@@ -496,44 +508,42 @@ int main(int argc, char** argv) {
     {
 	if(modified_mode == "false")
         {
-		cv::Mat frame, frame2;
+		cv::Mat frame;
 		capture1 >> frame;
+			
+		//cv::Mat frame2;
 		//capture2 >> frame2;
 		if (frame.empty())
 		{
-		    std::cout << "Fail to read image from camera!" << argv[3] << std::endl;
+		    std::cout << "Fail to read image from camera" << argv[3] << std::endl;
 		    break;
 		}
 			
+		
 		/*
 		if (frame2.empty())
                 {
-                    std::cout << "Fail to read image from camera!" << argv[4] << std::endl;
+                    std::cout << "Fail to read image from camera" << argv[4] << std::endl;
                     break;
                 }
 		*/
-		fcount++;
-		std::cout << "fcount: " << fcount << std::endl;
-		//if (fcount < BATCH_SIZE && f + 1 != (int)file_names.size()) continue;
-		for (int b = 0; b < fcount; b++) {
-		    //cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-		    cv::Mat img = frame;
+		cv::Mat img = frame;
 
 
-		    if (img.empty()) continue;
-		    cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
-		    int i = 0;
-		    for (int row = 0; row < INPUT_H; ++row) {
+		if (img.empty()) continue;
+		cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+		int i = 0;
+		for (int row = 0; row < INPUT_H; ++row) {
 			uchar* uc_pixel = pr_img.data + row * pr_img.step;
 			for (int col = 0; col < INPUT_W; ++col) {
-			    data[b * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
-			    data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-			    data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+			    data[0 * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
+			    data[0 * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+			    data[0 * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
 			    uc_pixel += 3;
 			    ++i;
 			}
-		    }
 		}
+		
 
 		
 
@@ -543,43 +553,34 @@ int main(int argc, char** argv) {
 		auto end = std::chrono::system_clock::now(); //结束时间
 		//std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 		int fps = 1000.0 / std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-		std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
-		for (int b = 0; b < fcount; b++) {
-		    auto& res = batch_res[b];
-		    nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
-		}
+		std::vector<std::vector<Yolo::Detection>> batch_res(1);
+		
+		auto& res = batch_res[0];
+		nms(res, &prob[0 * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
+		
 
 		//declare the variable for sending json
 		//cv::Mat app_img;
 		//frame.copyTo(app_img);
 		string bboxs("");
 		
-		for (int b = 0; b < fcount; b++) {
-		    auto& res = batch_res[b];
-		    //std::cout << res.size() << std::endl;
-		    //cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-		    for (size_t j = 0; j < res.size(); j++) {
-			//if(j >= 1)
-			//    bboxs += "/";
-			//bboxs += float_to_string(frame, res[j].bbox);
+		res = batch_res[0];
+		//std::cout << res.size() << std::endl;
+		for (size_t j = 0; j < res.size(); j++) {
 			cv::Rect r = get_rect(frame, res[j].bbox);
 			cv::rectangle(frame, r, cv::Scalar(0x27, 0xC1, 0x36), 2);
 			std::string label = my_classes[(int)res[j].class_id];
 			cv::putText(frame, label, cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
 			std::string jetson_fps = "FPS: " + std::to_string(fps);
 			cv::putText(frame, jetson_fps, cv::Point(11, 80), cv::FONT_HERSHEY_PLAIN, 3, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
-		    }
-		    //cv::imwrite("_" + file_names[f - fcount + 1 + b], img);
+		
 		}
-		//cout << bboxs << endl;
 		cout << "In the normal streaming" << endl;
 		sendImage(frame, bboxs, "true");
-		//cv::imshow("yolov5", frame);
 		key = cv::waitKey(1);
 		if (key == 'q') {
 		    break;
 		}
-		fcount = 0;
 
 		ret = recv(sockfd, buffer, 1024, 0);
        	 	ss << buffer;
@@ -602,25 +603,19 @@ int main(int argc, char** argv) {
 					    std::cout << "Fail to read image from camera!" << std::endl;
 					    break;
 					}
-					fcount++;
-					//std::cout << "fcount: " << fcount << std::endl;
-					//if (fcount < BATCH_SIZE && f + 1 != (int)file_names.size()) continue;
-					for (int b = 0; b < fcount; b++) {
-					    //cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-					    cv::Mat img = frame;
-					    if (img.empty()) continue;
-					    cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
-					    int i = 0;
-					    for (int row = 0; row < INPUT_H; ++row) {
+					cv::Mat img = frame;
+					if (img.empty()) continue;
+					cv::Mat pr_img = preprocess_img(img, INPUT_W, INPUT_H); // letterbox BGR to RGB
+					int i = 0;
+					for (int row = 0; row < INPUT_H; ++row) {
 						uchar* uc_pixel = pr_img.data + row * pr_img.step;
 						for (int col = 0; col < INPUT_W; ++col) {
-						    data[b * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
-						    data[b * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
-						    data[b * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
+						    data[0 * 3 * INPUT_H * INPUT_W + i] = (float)uc_pixel[2] / 255.0;
+						    data[0 * 3 * INPUT_H * INPUT_W + i + INPUT_H * INPUT_W] = (float)uc_pixel[1] / 255.0;
+						    data[0 * 3 * INPUT_H * INPUT_W + i + 2 * INPUT_H * INPUT_W] = (float)uc_pixel[0] / 255.0;
 						    uc_pixel += 3;
 						    ++i;
 						}
-					    }
 					}
 
 						// Run inference
@@ -629,22 +624,18 @@ int main(int argc, char** argv) {
 					auto end = std::chrono::system_clock::now(); //结束时间
 					//std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count() << "ms" << std::endl;
 					int fps = 1000.0 / std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-					std::vector<std::vector<Yolo::Detection>> batch_res(fcount);
-					for (int b = 0; b < fcount; b++) {
-					    auto& res = batch_res[b];
-					    nms(res, &prob[b * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
-					}
+					std::vector<std::vector<Yolo::Detection>> batch_res(1);
+					auto& res = batch_res[0];
+					nms(res, &prob[0 * OUTPUT_SIZE], CONF_THRESH, NMS_THRESH);
 
 					//declare the variable for sending json
 					cv::Mat app_img;
 					frame.copyTo(app_img);
 					string bboxs("");
 
-					for (int b = 0; b < fcount; b++) {
-					    auto& res = batch_res[b];
+					res = batch_res[0];
 					    //std::cout << res.size() << std::endl;
-					    //cv::Mat img = cv::imread(img_dir + "/" + file_names[f - fcount + 1 + b]);
-					    for (size_t j = 0; j < res.size(); j++) {
+					for (size_t j = 0; j < res.size(); j++) {
 						if(j >= 1)
 						    bboxs += "/";
 						bboxs += float_to_string(frame, res[j].bbox);
@@ -654,13 +645,11 @@ int main(int argc, char** argv) {
 						cv::putText(frame, label, cv::Point(r.x, r.y - 1), cv::FONT_HERSHEY_PLAIN, 1.2, cv::Scalar(0xFF, 0xFF, 0xFF), 2);
 						std::string jetson_fps = "FPS: " + std::to_string(fps);
 						cv::putText(frame, jetson_fps, cv::Point(11, 80), cv::FONT_HERSHEY_PLAIN, 3, cv::Scalar(0, 0, 255), 2, cv::LINE_AA);
-					    }
-					    //cv::imwrite("_" + file_names[f - fcount + 1 + b], img);
+					    
 					}
 					cout << bboxs << endl;
 					sendImage(app_img, bboxs, "true");
 					//cv::imshow("yolov5", frame);
-					fcount = 0;
 				}
 				else {
 					cv::Mat frame;
